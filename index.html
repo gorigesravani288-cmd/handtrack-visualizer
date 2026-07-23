@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Hand // Gesture Engine v3</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; background: #000; overflow: hidden;
+    height: 100%; width: 100%;
+  }
+  #wrap { position: relative; width: 100vw; height: 100vh; }
+  video, canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+  }
+  video { opacity: 0.3; filter: brightness(0.55); }
+  #fx { pointer-events: none; }
+
+  .hud-box {
+    position: absolute;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1.5px;
+    z-index: 10;
+    text-shadow: 0 0 8px currentColor;
+    opacity: 0.9;
+    pointer-events: none;
+    color: var(--accent, #0ff);
+  }
+  #title { top: 10px; left: 16px; font-size: 12px; }
+  #status { bottom: 10px; left: 16px; font-size: 11px; color: var(--accent2, #f0f); }
+  #gestureLeft { top: 40px; left: 16px; font-size: 13px; }
+  #gestureRight { top: 40px; right: 16px; text-align: right; font-size: 13px; }
+  #fps { top: 10px; right: 16px; font-size: 11px; text-align: right; }
+  #distReadout { bottom: 10px; right: 16px; font-size: 11px; text-align: right; color: #ffea00; }
+  #fingerCount {
+    top: 70px; left: 16px; font-size: 34px; font-weight: bold;
+  }
+  #fingerCountR { top: 70px; right: 16px; font-size: 34px; font-weight: bold; text-align: right; }
+  #themeHint {
+    bottom: 34px; left: 16px; font-size: 10px; opacity: 0.6; color: #aaa; text-shadow: none;
+  }
+  #soundToggle {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    font-family: 'Courier New', monospace; font-size: 11px;
+    color: #0ff; background: rgba(0,0,0,0.4); border: 1px solid #0ff;
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; z-index: 20;
+    pointer-events: auto; letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <video id="video" playsinline></video>
+  <canvas id="canvas"></canvas>
+  <canvas id="fx"></canvas>
+
+  <div id="title" class="hud-box">CAT'S EYE // NEON HAND GESTURE ENGINE // v3</div>
+  <div id="fps" class="hud-box">FPS: --</div>
+  <div id="gestureLeft" class="hud-box"></div>
+  <div id="gestureRight" class="hud-box"></div>
+  <div id="fingerCount" class="hud-box"></div>
+  <div id="fingerCountR" class="hud-box"></div>
+  <div id="status" class="hud-box">initializing camera...</div>
+  <div id="distReadout" class="hud-box"></div>
+  <div id="themeHint" class="hud-box">FIST=fire theme · PEACE=ice theme · OPEN PALM=cyber theme · PINCH+HOLD=shoot orb</div>
+  <button id="soundToggle">🔊 SOUND: ON</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+const videoEl = document.getElementById('video');
+const canvasEl = document.getElementById('canvas');
+const fxEl = document.getElementById('fx');
+const ctx = canvasEl.getContext('2d');
+const fxCtx = fxEl.getContext('2d');
+const statusEl = document.getElementById('status');
+const fpsEl = document.getElementById('fps');
+const gestureLeftEl = document.getElementById('gestureLeft');
+const gestureRightEl = document.getElementById('gestureRight');
+const distEl = document.getElementById('distReadout');
+const fingerCountEl = document.getElementById('fingerCount');
+const fingerCountREl = document.getElementById('fingerCountR');
+const soundToggleBtn = document.getElementById('soundToggle');
+const root = document.documentElement;
+
+function resize() {
+  canvasEl.width = fxEl.width = window.innerWidth;
+  canvasEl.height = fxEl.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- THEMES ----------
+const THEMES = {
+  cyber: { skeleton: '#00fff2', accent: '#00fff2', accent2: '#f0f', palette: ['#ff5bd0','#00f2ff','#7dff5b','#ffdd33','#ff8a00'] },
+  fire:  { skeleton: '#ff5500', accent: '#ff8800', accent2: '#ffcc00', palette: ['#ff2200','#ff6600','#ff9900','#ffcc00','#ffee00'] },
+  ice:   { skeleton: '#7fdfff', accent: '#7fdfff', accent2: '#c0f0ff', palette: ['#00e5ff','#66f0ff','#a0f8ff','#ffffff','#4fc3f7'] }
+};
+let currentTheme = 'cyber';
+function applyTheme(name) {
+  currentTheme = name;
+  const t = THEMES[name];
+  root.style.setProperty('--accent', t.accent);
+  root.style.setProperty('--accent2', t.accent2);
+}
+applyTheme('cyber');
+
+// ---------- SOUND (Web Audio, no files) ----------
+let audioCtx = null;
+let soundOn = true;
+soundToggleBtn.addEventListener('click', () => {
+  soundOn = !soundOn;
+  soundToggleBtn.textContent = soundOn ? '🔊 SOUND: ON' : '🔇 SOUND: OFF';
+});
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+function beep(freq, duration, type = 'sine', gain = 0.15, glideTo = null) {
+  if (!soundOn) return;
+  ensureAudio();
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, audioCtx.currentTime + duration);
+  g.gain.setValueAtTime(gain, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+const sfx = {
+  zap: () => beep(900, 0.08, 'square', 0.08, 500),
+  fire: () => beep(220, 0.35, 'sawtooth', 0.12, 60),
+  fist: () => beep(80, 0.2, 'sine', 0.2),
+  themeSwitch: () => beep(660, 0.15, 'triangle', 0.1, 990),
+  burst: () => beep(150, 0.4, 'sawtooth', 0.18, 900)
+};
+
+// ---------- particle trail system ----------
+let particles = [];
+function spawnParticles(x, y, color, count, spread, speedMul) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (Math.random() * 2 + 0.5) * speedMul;
+    particles.push({
+      x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      life: 1, decay: 0.02 + Math.random() * 0.02, color, r: Math.random() * 2.5 + 1
+    });
+  }
+  if (particles.length > 700) particles.splice(0, particles.length - 700);
+}
+
+// ---------- projectiles ----------
+let projectiles = [];
+function fireProjectile(x, y, dx, dy, color) {
+  const mag = Math.sqrt(dx*dx + dy*dy) || 1;
+  const speed = 14;
+  projectiles.push({
+    x, y, vx: (dx/mag) * speed, vy: (dy/mag) * speed,
+    color, life: 1, r: 9
+  });
+}
+function updateProjectiles() {
+  projectiles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0 || p.x > canvasEl.width) p.vx *= -1;
+    if (p.y < 0 || p.y > canvasEl.height) p.vy *= -1;
+    spawnParticles(p.x, p.y, p.color, 1, 0.3, 0.4);
+    p.life -= 0.004;
+  });
+  projectiles = projectiles.filter(p => p.life > 0);
+  projectiles.forEach(p => {
+    fxCtx.beginPath();
+    fxCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    fxCtx.fillStyle = p.color;
+    fxCtx.shadowColor = p.color;
+    fxCtx.shadowBlur = 20;
+    fxCtx.globalAlpha = Math.min(1, p.life * 2);
+    fxCtx.fill();
+    fxCtx.globalAlpha = 1;
+  });
+}
+
+function updateParticles() {
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.96; p.vy *= 0.96;
+    p.life -= p.decay;
+  });
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => {
+    fxCtx.beginPath();
+    fxCtx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    fxCtx.fillStyle = p.color;
+    fxCtx.globalAlpha = p.life;
+    fxCtx.shadowColor = p.color;
+    fxCtx.shadowBlur = 10;
+    fxCtx.fill();
+  });
+  fxCtx.globalAlpha = 1;
+}
+
+// ---------- drawing helpers ----------
+function drawGlowLine(x1, y1, x2, y2, color, width) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  ctx.strokeStyle = color; ctx.lineWidth = width;
+  ctx.shadowColor = color; ctx.shadowBlur = 14;
+  ctx.stroke();
+}
+function drawGlowDot(x, y, color, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 12;
+  ctx.fill();
+}
+function drawExtendedRay(ax, ay, bx, by, color, width, length) {
+  const dx = bx - ax, dy = by - ay;
+  const mag = Math.sqrt(dx*dx + dy*dy) || 1;
+  const ux = dx / mag, uy = dy / mag;
+  drawGlowLine(bx, by, bx + ux * length, by + uy * length, color, width);
+}
+function dist(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2); }
+
+// ---------- gesture detection ----------
+function detectGesture(lm) {
+  const wrist = lm[0];
+  const palmSize = dist(lm[0], lm[9]);
+  const thumbTip = lm[4], indexTip = lm[8];
+  const pinchDist = dist(thumbTip, indexTip) / palmSize;
+
+  function isCurled(tipIdx, pipIdx) {
+    return dist(lm[tipIdx], wrist) < dist(lm[pipIdx], wrist) * 1.05;
+  }
+  const indexCurled = isCurled(8, 6);
+  const middleCurled = isCurled(12, 10);
+  const ringCurled = isCurled(16, 14);
+  const pinkyCurled = isCurled(20, 18);
+  const thumbCurled = dist(thumbTip, lm[17]) / palmSize < 0.4;
+
+  const extendedCount = [!indexCurled, !middleCurled, !ringCurled, !pinkyCurled, !thumbCurled].filter(Boolean).length;
+  const allCurled = indexCurled && middleCurled && ringCurled && pinkyCurled;
+  const allExtended = !indexCurled && !middleCurled && !ringCurled && !pinkyCurled;
+
+  let name = 'TRACKING';
+  if (pinchDist < 0.35) name = 'PINCH';
+  else if (allCurled && thumbCurled) name = 'FIST';
+  else if (allExtended) name = 'OPEN PALM';
+  else if (!indexCurled && middleCurled && ringCurled && pinkyCurled) name = 'POINT';
+  else if (!indexCurled && !middleCurled && ringCurled && pinkyCurled) name = 'PEACE';
+
+  return { name, pinch: pinchDist, fingerCount: extendedCount };
+}
+
+// ---------- main render ----------
+let lastTime = performance.now();
+let frameCount = 0;
+let hueShift = 0;
+let lastGestureA = null, lastGestureB = null;
+let pinchHoldFrames = { 0: 0, 1: 0 };
+let lastFireTime = { 0: 0, 1: 0 };
+
+function handleThemeSwitch(gestureName) {
+  const map = { 'FIST': 'fire', 'PEACE': 'ice', 'OPEN PALM': 'cyber' };
+  if (map[gestureName] && map[gestureName] !== currentTheme) {
+    applyTheme(map[gestureName]);
+    sfx.themeSwitch();
+    spawnParticles(canvasEl.width/2, 60, THEMES[currentTheme].accent, 20, 3, 2);
+  }
+}
+
+function onResults(results) {
+  const now = performance.now();
+  frameCount++;
+  if (now - lastTime > 500) {
+    fpsEl.textContent = `FPS: ${Math.round((frameCount * 1000) / (now - lastTime))}`;
+    frameCount = 0; lastTime = now;
+  }
+  hueShift = (hueShift + 1.2) % 360;
+
+  ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  gestureLeftEl.textContent = ''; gestureRightEl.textContent = '';
+  fingerCountEl.textContent = ''; fingerCountREl.textContent = '';
+  distEl.textContent = '';
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    statusEl.textContent = 'no hands detected // searching...';
+    updateParticles(); updateProjectiles();
+    return;
+  }
+  statusEl.textContent = `tracking ${results.multiHandLandmarks.length} hand(s)`;
+
+  const theme = THEMES[currentTheme];
+  const handsScaled = [];
+
+  results.multiHandLandmarks.forEach((landmarks, idx) => {
+    const isFirst = idx === 0;
+    const skeletonColor = theme.skeleton;
+    const rayPalette = theme.palette;
+
+    const gesture = detectGesture(landmarks);
+    const pts = landmarks.map(lm => ({ x: lm.x * canvasEl.width, y: lm.y * canvasEl.height }));
+    handsScaled.push({ pts, gesture });
+
+    const label = `${isFirst ? 'HAND A' : 'HAND B'}: ${gesture.name}`;
+    if (isFirst) { gestureLeftEl.textContent = label; fingerCountEl.textContent = gesture.fingerCount; }
+    else { gestureRightEl.textContent = label; fingerCountREl.textContent = gesture.fingerCount; }
+
+    // theme switching (only hand A drives it, avoids flicker with 2 hands)
+    if (isFirst) {
+      const prev = lastGestureA;
+      if (gesture.name !== prev) handleThemeSwitch(gesture.name);
+      lastGestureA = gesture.name;
+    } else {
+      const prev = lastGestureB;
+      lastGestureB = gesture.name;
+    }
+
+    // skeleton
+    [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+     [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]]
+      .forEach(([i,j]) => drawGlowLine(pts[i].x, pts[i].y, pts[j].x, pts[j].y, skeletonColor, 2));
+    pts.forEach((p, i) => drawGlowDot(p.x, p.y, skeletonColor, [4,8,12,16,20].includes(i) ? 5 : 3));
+
+    // gesture-driven ray behavior + sound triggers on gesture change
+    const prevGestureName = isFirst ? lastGestureA : lastGestureB;
+
+    if (gesture.name === 'FIST') {
+      drawGlowDot(pts[0].x, pts[0].y, '#ff2222', 14 + Math.sin(now / 80) * 4);
+    } else if (gesture.name === 'PINCH') {
+      const midX = (pts[4].x + pts[8].x) / 2, midY = (pts[4].y + pts[8].y) / 2;
+      drawExtendedRay(pts[0].x, pts[0].y, pts[8].x, pts[8].y, '#ffffff', 3, 1000);
+      drawGlowDot(midX, midY, '#ffffff', 8);
+      spawnParticles(midX, midY, `hsl(${hueShift}, 100%, 65%)`, 3, 1, 1.2);
+
+      // hold pinch to charge, release direction = fire! (auto-fire after short hold, aimed along forearm->index direction)
+      pinchHoldFrames[idx] = (pinchHoldFrames[idx] || 0) + 1;
+      const chargeRatio = Math.min(1, pinchHoldFrames[idx] / 18);
+      drawGlowDot(midX, midY, theme.accent, 6 + chargeRatio * 18);
+
+      if (pinchHoldFrames[idx] >= 18 && now - (lastFireTime[idx] || 0) > 350) {
+        const dx = pts[8].x - pts[0].x, dy = pts[8].y - pts[0].y;
+        fireProjectile(midX, midY, dx, dy, rayPalette[idx % rayPalette.length]);
+        sfx.fire();
+        spawnParticles(midX, midY, '#ffffff', 10, 2.5, 2);
+        lastFireTime[idx] = now;
+        pinchHoldFrames[idx] = 0;
+      }
+    } else {
+      pinchHoldFrames[idx] = 0;
+      [4,8,12,16,20].forEach((tipIdx, fi) => {
+        const color = `hsl(${(hueShift + fi * 40) % 360}, 100%, 60%)`;
+        drawExtendedRay(pts[0].x, pts[0].y, pts[tipIdx].x, pts[tipIdx].y, color, 1.6, 500 + fi * 60);
+      });
+      if (gesture.name === 'OPEN PALM' || gesture.name === 'POINT') {
+        spawnParticles(pts[8].x, pts[8].y, rayPalette[1], 1, 0.5, 0.6);
+      }
+    }
+
+    // sound on gesture change
+    if (prevGestureName !== gesture.name) {
+      if (gesture.name === 'PINCH') sfx.zap();
+      if (gesture.name === 'FIST') sfx.fist();
+    }
+  });
+
+  // two-hand interaction
+  if (handsScaled.length === 2) {
+    const a = handsScaled[0].pts[0], b = handsScaled[1].pts[0];
+    const d = Math.round(dist(a, b));
+    distEl.textContent = `HAND DISTANCE: ${d}px`;
+
+    const bridgeColor = `hsl(${hueShift}, 100%, 60%)`;
+    ctx.save(); ctx.setLineDash([6, 10]);
+    drawGlowLine(a.x, a.y, b.x, b.y, bridgeColor, 2);
+    ctx.restore();
+
+    if (handsScaled[0].gesture.name === 'PINCH' && handsScaled[1].gesture.name === 'PINCH' && d < 150) {
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      spawnParticles(mx, my, '#ffffff', 6, 2, 3);
+      drawGlowDot(mx, my, '#ffffff', 20 + Math.sin(now / 60) * 6);
+      if (frameCount % 20 === 0) sfx.burst();
+    }
+  }
+
+  updateParticles();
+  updateProjectiles();
+}
+
+const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+hands.onResults(onResults);
+
+const camera = new Camera(videoEl, {
+  onFrame: async () => { await hands.send({ image: videoEl }); },
+  width: 1280, height: 720
+});
+
+camera.start()
+  .then(() => { statusEl.textContent = 'camera live // model loading...'; })
+  .catch((err) => { statusEl.textContent = 'camera access denied or unavailable: ' + err.message; });
+
+document.body.addEventListener('click', ensureAudio, { once: true });
+</script>
+</body>
+</html>
