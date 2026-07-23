@@ -66,7 +66,6 @@ The **SOUND** button (top center) toggles all audio on/off.
 | Pinch-charge | Two-hand bridge |
 |---|---|
 | ![](screenshot_pinch_charge.png) | ![](screenshot_two_hand_bridge.png) |       
-
 ## How it works, briefly
 
 - `Hands` (MediaPipe) streams webcam frames and returns 21 landmarks
