@@ -20,15 +20,6 @@ backend, no dependencies to install.
 | Procedural audio | All sound effects (pinch, fist, fire, theme switch, burst) are synthesized via the Web Audio API — no audio files |
 | Live HUD | FPS counter, per-hand gesture label, per-hand extended-finger count, hand distance |
 
-## Screenshots
-
-| Cyber (default) | Fire | Ice |
-|---|---|---|
-| ![](screenshots/screenshot_openpalm_cyber.png) | ![](screenshots/screenshot_fist_fire.png) | ![](screenshots/screenshot_peace_ice.png) |
-
-| Pinch-charge | Two-hand bridge |
-|---|---|
-| ![](screenshots/screenshot_pinch_charge.png) | ![](screenshots/screenshot_two_hand_bridge.png) |
 ## Getting started
 
 MediaPipe's WASM/camera assets require the page to be served over
