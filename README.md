@@ -24,12 +24,11 @@ backend, no dependencies to install.
 
 | Cyber (default) | Fire | Ice |
 |---|---|---|
-| ![](screenshot_openpalm_cyber.png) | ![](screenshot_fist_fire.png) | ![](screenshot_peace_ice.png) |
+| ![](screenshots/screenshot_openpalm_cyber.png) | ![](screenshots/screenshot_fist_fire.png) | ![](screenshots/screenshot_peace_ice.png) |
 
 | Pinch-charge | Two-hand bridge |
 |---|---|
-| ![](screenshot_pinch_charge.png) | ![](screenshot_two_hand_bridge.png) |
-
+| ![](screenshots/screenshot_pinch_charge.png) | ![](screenshots/screenshot_two_hand_bridge.png) |
 ## Getting started
 
 MediaPipe's WASM/camera assets require the page to be served over
