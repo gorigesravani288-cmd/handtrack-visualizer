@@ -16,18 +16,13 @@ A single-page, webcam-based hand-gesture visualizer built on [MediaPipe Hands](h
 
 ## Screenshots
 
-**Themes and gestures** — cyber (default), fire, and ice themes, plus the pinch-charge effect:
+| Cyber (default) | Fire | Ice |
+|---|---|---|
+| ![](screenshot_openpalm_cyber.png) | ![](screenshot_fist_fire.png) | ![](screenshot_peace_ice.png) |
 
-![Themes and gestures](docs/screenshots/themes-and-gestures.png)
-
-**Two-hand bridge** — finger-to-finger energy bridge connecting both tracked hands:
-
-![Two-hand bridge](docs/screenshots/two-hand-bridge.png)
-
-**Control panel** — line thickness, glow, particle density, and grid opacity sliders:
-
-![Control panel](docs/screenshots/control-panel.png)
-
+| Pinch-charge | Two-hand bridge |
+|---|---|
+| ![](screenshot_pinch_charge.png) | ![](screenshot_two_hand_bridge.png) |
 ## Required setup (important)
 
 This app expects local vendored copies of the MediaPipe Hands and Camera Utils scripts — **they are not included in this repo** and must be added before it will run:
