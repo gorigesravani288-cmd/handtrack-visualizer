@@ -23,8 +23,6 @@ A single-page, webcam-based hand-gesture visualizer built on [MediaPipe Hands](h
 | Pinch-charge | Two-hand bridge |
 |---|---|
 | ![](screenshot_pinch_charge.png) | ![](screenshot_two_hand_bridge.png) |
-## Required setup (important)
-
 This app expects local vendored copies of the MediaPipe Hands and Camera Utils scripts — **they are not included in this repo** and must be added before it will run:
 
 ```
