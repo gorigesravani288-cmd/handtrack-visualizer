@@ -64,7 +64,7 @@ The **SOUND** button (top center) toggles all audio on/off.
 - `Hands` (MediaPipe) streams webcam frames and returns 21 landmarks
   per detected hand; `onResults()` is the per-frame render loop.
 - `detectGesture()` classifies a hand's pose from landmark distances
-  and thresholds — no ML classifier beyond MediaPipe's own model.
+  and thresholds — no ML classifier beyond MediaPipe's own model. 
 - All visual effects (`drawGlowLine`, `drawGlowDot`, `drawExtendedRay`,
   particles, projectiles) are drawn on two stacked canvases: `canvas`
   for the skeleton/rays, `fx` for particles/projectiles, so effects can
